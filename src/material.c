@@ -16,7 +16,21 @@ bool material_scatter(const Material* mat, const Ray* ray_in,
             // 4. Set attenuation = mat->albedo (warna material)
             // 5. Return true untuk menandakan scatter berhasil
 
-            return false; // Ganti dengan implementasi yang benar
+            // Cosine-weighted hemisphere sampling
+            Vec3 scatter_direction = vec3_add(rec->normal, rng_unit_vector(rng));
+            
+            // Handle degenerate case (jika scatter_direction hampir nol)
+            if (vec3_length_squared(scatter_direction) < 0.001f) {
+                scatter_direction = rec->normal;
+            }
+            
+            // Buat scattered ray
+            *scattered = ray_create(rec->point, scatter_direction);
+            
+            // Set attenuation ke albedo material
+            *attenuation = mat->albedo;
+            
+            return true;
         }
 
         case MATERIAL_METAL: {
