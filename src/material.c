@@ -24,7 +24,6 @@ bool material_scatter(const Material* mat, const Ray* ray_in,
                 scatter_direction = rec->normal;
             }
             
-            // Buat scattered ray
             *scattered = ray_create(rec->point, scatter_direction);
             
             // Set attenuation ke albedo material
@@ -49,7 +48,6 @@ bool material_scatter(const Material* mat, const Ray* ray_in,
             Vec3 fuzz = vec3_scale(rng_in_unit_sphere(rng), mat->roughness);
             Vec3 scatter_direction = vec3_add(reflected, fuzz);
             
-            // Buat scattered ray
             *scattered = ray_create(rec->point, scatter_direction);
             
             // Set attenuation ke warna metal
@@ -73,9 +71,36 @@ bool material_scatter(const Material* mat, const Ray* ray_in,
             *attenuation = vec3_create(1.0f, 1.0f, 1.0f);
             float refraction_ratio = rec->front_face ? (1.0f / mat->ior) : mat->ior;
 
-            // TODO: Implementasikan refraction logic di sini
-
-            return false; // Ganti dengan implementasi yang benar
+            // Normalize incident direction
+            Vec3 unit_direction = vec3_normalize(ray_in->direction);
+            
+            // Hitung cos theta untuk incident angle
+            float cos_theta = fminf(-vec3_dot(unit_direction, rec->normal), 1.0f);
+            float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
+            
+            // Cek total internal reflection
+            bool cannot_refract = refraction_ratio * sin_theta > 1.0f;
+            
+            Vec3 direction;
+            Vec3 refracted;
+            
+            // Tentukan reflection atau refraction
+            if (cannot_refract || schlick(cos_theta, refraction_ratio) > rng_float(rng)) {
+                // Reflect
+                direction = vec3_reflect(unit_direction, rec->normal);
+            } else {
+                // Refract
+                if (vec3_refract(unit_direction, rec->normal, refraction_ratio, &refracted)) {
+                    direction = refracted;
+                } else {
+                    // Fallback ke reflection jika refract gagal
+                    direction = vec3_reflect(unit_direction, rec->normal);
+                }
+            }
+            
+            *scattered = ray_create(rec->point, direction);
+            
+            return true;
         }
 
         case MATERIAL_EMISSIVE: {
