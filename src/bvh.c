@@ -100,9 +100,20 @@ SplitCandidate bvh_find_best_split(const BVH* bvh, uint32_t* prim_indices,
             // 4. Jika cost lebih kecil dari best.cost, update best split
             // 5. Jangan lupa sort primitives dan set split_pos
 
-            float cost = FLT_MAX; // TODO: Hitung SAH cost
+            // Implementasi SAH (Surface Area Heuristic) cost calculation
+            float parent_area = aabb_surface_area(bounds);
+            float left_area = aabb_surface_area(left_bounds);
+            float right_area = aabb_surface_area(right_bounds);
+            
+            // Hitung cost = traversal_cost + (left_count * left_area + right_count * right_area) / parent_area
+            float cost = 1.0f + (left_area * left_count + right_area * right_count) / parent_area;
 
-            // TODO: Update best split jika cost lebih baik
+            // Jika cost lebih kecil dari best.cost, update best split
+            if (cost < best.cost) {
+                best.cost = cost;
+                best.split_axis = axis;
+                best.split_pos = start + left_count;
+            }
         }
     }
 
@@ -130,10 +141,47 @@ BVHNode* bvh_build_recursive(BVH* bvh, uint32_t* prim_indices,
     BVHNode* node = &bvh->nodes[(*node_idx)++];
 
     // TODO: Hitung bounds untuk node ini
+    AABB bounds = aabb_empty();
+    for (uint32_t i = start; i < end; i++) {
+        bounds = aabb_union(bounds, bvh->primitives[prim_indices[i]].bounds);
+    }
+    node->bounds = bounds;
 
     uint32_t prim_count = end - start;
 
-    // TODO: Implementasi leaf node dan recursive split
+    // Leaf node condition: few primitives or small area
+    if (prim_count <= 4) {
+        node->is_leaf = true;
+        node->first_prim_idx = start;
+        node->prim_count = prim_count;
+        return node;
+    }
+
+    // Cari best split
+    SplitCandidate split = bvh_find_best_split(bvh, prim_indices, start, end);
+
+    // Jika split gagal atau tidak layak
+    if (split.cost == FLT_MAX) {
+        node->is_leaf = true;
+        node->first_prim_idx = start;
+        node->prim_count = prim_count;
+        return node;
+    }
+
+    // Partition primitives
+    sort_ctx.axis = split.split_axis;
+    sort_ctx.primitives = bvh->primitives;
+    qsort(prim_indices + start, prim_count, sizeof(uint32_t), compare_primitives);
+
+    // Pastikan split membuat progress
+    uint32_t mid = split.split_pos;
+    if (mid <= start || mid >= end) {
+        mid = start + prim_count / 2;
+    }
+
+    node->is_leaf = false;
+    node->left = bvh_build_recursive(bvh, prim_indices, start, mid, node_idx);
+    node->right = bvh_build_recursive(bvh, prim_indices, mid, end, node_idx);
 
     return node;
 }
@@ -203,6 +251,30 @@ bool bvh_hit(const BVH* bvh, const Ray* ray, float t_min, float t_max,
     float closest_so_far = t_max;
 
     // TODO: Implementasi traversal algorithm di sini
+    stack[stack_ptr++] = bvh->root;
+
+    while (stack_ptr > 0) {
+        BVHNode* node = stack[--stack_ptr];
+
+        // Cek AABB intersection
+        if (!aabb_hit(&node->bounds, ray, t_min, closest_so_far)) {
+            continue;
+        }
+
+        if (node->is_leaf) {
+            // Test all primitives in leaf
+            for (uint32_t i = 0; i < node->prim_count; i++) {
+                uint32_t idx = node->first_prim_idx + i;
+                if (primitive_hit(&bvh->primitives[idx], ray, t_min, closest_so_far, rec)) {
+                    hit_anything = true;
+                    closest_so_far = rec->t;
+                }
+            }
+        } else {
+            stack[stack_ptr++] = node->right;
+            stack[stack_ptr++] = node->left;
+        }
+    }
 
     return hit_anything;
 }

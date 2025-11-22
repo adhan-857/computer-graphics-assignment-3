@@ -16,7 +16,20 @@ bool material_scatter(const Material* mat, const Ray* ray_in,
             // 4. Set attenuation = mat->albedo (warna material)
             // 5. Return true untuk menandakan scatter berhasil
 
-            return false; // Ganti dengan implementasi yang benar
+            // Cosine-weighted hemisphere sampling
+            Vec3 scatter_direction = vec3_add(rec->normal, rng_unit_vector(rng));
+            
+            // Handle degenerate case (jika scatter_direction hampir nol)
+            if (vec3_length_squared(scatter_direction) < 0.001f) {
+                scatter_direction = rec->normal;
+            }
+            
+            *scattered = ray_create(rec->point, scatter_direction);
+            
+            // Set attenuation ke albedo material
+            *attenuation = mat->albedo;
+            
+            return true;
         }
 
         case MATERIAL_METAL: {
@@ -28,7 +41,20 @@ bool material_scatter(const Material* mat, const Ray* ray_in,
             // 4. Set attenuation = mat->albedo
             // 5. Return true hanya jika scattered ray mengarah ke luar (dot product > 0)
 
-            return false; // Ganti dengan implementasi yang benar
+            // Hitung perfect reflection direction
+            Vec3 reflected = vec3_reflect(vec3_normalize(ray_in->direction), rec->normal);
+            
+            // Tambahkan roughness/fuzz untuk non-perfect reflection
+            Vec3 fuzz = vec3_scale(rng_in_unit_sphere(rng), mat->roughness);
+            Vec3 scatter_direction = vec3_add(reflected, fuzz);
+            
+            *scattered = ray_create(rec->point, scatter_direction);
+            
+            // Set attenuation ke warna metal
+            *attenuation = mat->albedo;
+            
+            // Return true hanya jika ray mengarah ke hemisphere yang benar
+            return vec3_dot(scattered->direction, rec->normal) > 0.0f;
         }
 
         case MATERIAL_DIELECTRIC: {
@@ -45,9 +71,36 @@ bool material_scatter(const Material* mat, const Ray* ray_in,
             *attenuation = vec3_create(1.0f, 1.0f, 1.0f);
             float refraction_ratio = rec->front_face ? (1.0f / mat->ior) : mat->ior;
 
-            // TODO: Implementasikan refraction logic di sini
-
-            return false; // Ganti dengan implementasi yang benar
+            // Normalize incident direction
+            Vec3 unit_direction = vec3_normalize(ray_in->direction);
+            
+            // Hitung cos theta untuk incident angle
+            float cos_theta = fminf(-vec3_dot(unit_direction, rec->normal), 1.0f);
+            float sin_theta = sqrtf(1.0f - cos_theta * cos_theta);
+            
+            // Cek total internal reflection
+            bool cannot_refract = refraction_ratio * sin_theta > 1.0f;
+            
+            Vec3 direction;
+            Vec3 refracted;
+            
+            // Tentukan reflection atau refraction
+            if (cannot_refract || schlick(cos_theta, refraction_ratio) > rng_float(rng)) {
+                // Reflect
+                direction = vec3_reflect(unit_direction, rec->normal);
+            } else {
+                // Refract
+                if (vec3_refract(unit_direction, rec->normal, refraction_ratio, &refracted)) {
+                    direction = refracted;
+                } else {
+                    // Fallback ke reflection jika refract gagal
+                    direction = vec3_reflect(unit_direction, rec->normal);
+                }
+            }
+            
+            *scattered = ray_create(rec->point, direction);
+            
+            return true;
         }
 
         case MATERIAL_EMISSIVE: {

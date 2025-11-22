@@ -160,13 +160,29 @@ Vec3 trace_ray(const Scene* scene, const Ray* ray, RNG* rng,
     // - Gunakan rng_float(rng) untuk generate random number [0,1]
     // - Return vec3_create(0, 0, 0) jika terminate
 
+    // Russian roulette untuk early termination
+    const uint32_t RR_START_DEPTH = 3;
+    float p_continue = 1.0f;
+
+    if (depth >= max_depth) {
+        return vec3_create(0, 0, 0);
+    }
+
+    // Terapkan Russian Roulette setelah beberapa kali memantul
+    if (depth >= RR_START_DEPTH) {
+        p_continue = 0.95f; 
+        if (rng_float(rng) > p_continue) {
+            return vec3_create(0, 0, 0);
+        }
+    }
+
     HitRecord rec;
 
     // Test intersection dengan scene
     if (!scene_hit(scene, ray, 0.001f, FLT_MAX, &rec)) {
         // TODO: Return warna background/sky
         // Hint: Gunakan scene->ambient_light
-        return vec3_create(0, 0, 0); // Ganti ini
+        return scene->ambient_light;
     }
 
     // TODO: Handle material emissive (light source)
@@ -180,6 +196,11 @@ Vec3 trace_ray(const Scene* scene, const Ray* ray, RNG* rng,
     // - Panggil material_scatter() untuk mendapatkan scattered ray
     // - Jika scatter gagal (return false), return vec3_create(0, 0, 0)
 
+    // Handle material emissive (light source)
+    if (rec.material->type == MATERIAL_EMISSIVE) {
+        return rec.material->emission;
+    }
+
     Vec3 attenuation;
     Ray scattered;
 
@@ -189,7 +210,25 @@ Vec3 trace_ray(const Scene* scene, const Ray* ray, RNG* rng,
     // - Jika berhasil, lakukan recursive trace dengan trace_ray()
     // - Kalikan hasil recursive dengan attenuation menggunakan vec3_mul()
 
-    return vec3_create(0, 0, 0); // Ganti ini dengan implementasi yang benar
+    // Scatter ray berdasarkan material
+    if (material_scatter(rec.material, ray, &rec, &attenuation, &scattered, rng)) {
+        // Recursive trace
+        Vec3 incoming = trace_ray(scene, &scattered, rng, depth + 1, max_depth);
+        
+        // Kalikan hasil recursive dengan attenuation
+        Vec3 scattered_light = vec3_mul(attenuation, incoming);
+        
+        // Aplikasikan RR compensation
+        if (depth >= RR_START_DEPTH) {
+            scattered_light = vec3_scale(scattered_light, 1.0f / p_continue);
+        }
+        
+        // Menambahkan emission
+        return vec3_add(rec.material->emission, scattered_light);
+    }
+
+    // Jika tidak ada scatter (absorbed), return emission
+    return rec.material->emission;
 }
 
 // Multi-threaded rendering with OpenMP
