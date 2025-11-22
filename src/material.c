@@ -42,7 +42,21 @@ bool material_scatter(const Material* mat, const Ray* ray_in,
             // 4. Set attenuation = mat->albedo
             // 5. Return true hanya jika scattered ray mengarah ke luar (dot product > 0)
 
-            return false; // Ganti dengan implementasi yang benar
+            // Hitung perfect reflection direction
+            Vec3 reflected = vec3_reflect(vec3_normalize(ray_in->direction), rec->normal);
+            
+            // Tambahkan roughness/fuzz untuk non-perfect reflection
+            Vec3 fuzz = vec3_scale(rng_in_unit_sphere(rng), mat->roughness);
+            Vec3 scatter_direction = vec3_add(reflected, fuzz);
+            
+            // Buat scattered ray
+            *scattered = ray_create(rec->point, scatter_direction);
+            
+            // Set attenuation ke warna metal
+            *attenuation = mat->albedo;
+            
+            // Return true hanya jika ray mengarah ke hemisphere yang benar
+            return vec3_dot(scattered->direction, rec->normal) > 0.0f;
         }
 
         case MATERIAL_DIELECTRIC: {
