@@ -21,7 +21,41 @@ bool sphere_hit(const Sphere* sphere, const Ray* ray, float t_min, float t_max,
     //    - rec->normal = normalized(point - center)
     //    - rec->front_face = dot(ray->direction, normal) < 0
 
-    return false; // Ganti dengan implementasi yang benar
+    // Vector dari origin ke center
+    Vec3 oc = vec3_sub(ray->origin, sphere->center);
+    
+    // Koefisien persamaan kuadrat
+    float a = vec3_dot(ray->direction, ray->direction);
+    float half_b = vec3_dot(oc, ray->direction);
+    float c = vec3_dot(oc, oc) - sphere->radius * sphere->radius;
+    
+    // Hitung diskriminan
+    float discriminant = half_b * half_b - a * c;
+    if (discriminant < 0.0f) {
+        return false;
+    }
+    
+    float sqrtd = sqrtf(discriminant);
+    
+    // Cari root terdekat dalam range [t_min, t_max]
+    float root = (-half_b - sqrtd) / a;
+    if (root < t_min || root > t_max) {
+        root = (-half_b + sqrtd) / a;
+        if (root < t_min || root > t_max) {
+            return false;
+        }
+    }
+    
+    // Isi hit record
+    rec->t = root;
+    rec->point = ray_at(*ray, rec->t);
+    Vec3 outward_normal = vec3_div(vec3_sub(rec->point, sphere->center), sphere->radius);
+    
+    // Tentukan front face berdasarkan arah ray dan normal
+    rec->front_face = vec3_dot(ray->direction, outward_normal) < 0.0f;
+    rec->normal = rec->front_face ? outward_normal : vec3_scale(outward_normal, -1.0f);
+    
+    return true;
 }
 
 // Ray-triangle intersection (Möller-Trumbore algorithm)
