@@ -80,9 +80,53 @@ bool triangle_hit(const Triangle* triangle, const Ray* ray, float t_min, float t
 
     const float EPSILON = 0.0000001f;
 
-    // TODO: Implementasi algoritma di sini
-
-    return false; // Ganti dengan implementasi yang benar
+    // Hitung edge vectors
+    Vec3 edge1 = vec3_sub(triangle->v1, triangle->v0);
+    Vec3 edge2 = vec3_sub(triangle->v2, triangle->v0);
+    
+    // Hitung h = d x e2
+    Vec3 h = vec3_cross(ray->direction, edge2);
+    float a = vec3_dot(edge1, h);
+    
+    // Cek parallel (ray sejajar dengan plane triangle)
+    if (fabsf(a) < EPSILON) {
+        return false;
+    }
+    
+    float f = 1.0f / a;
+    Vec3 s = vec3_sub(ray->origin, triangle->v0);
+    
+    // Hitung koordinat barycentric u
+    float u = f * vec3_dot(s, h);
+    if (u < 0.0f || u > 1.0f) {
+        return false;
+    }
+    
+    // Hitung q = s x e1
+    Vec3 q = vec3_cross(s, edge1);
+    
+    // Hitung koordinat barycentric v
+    float v = f * vec3_dot(ray->direction, q);
+    if (v < 0.0f || u + v > 1.0f) {
+        return false;
+    }
+    
+    // Hitung t parameter
+    float t = f * vec3_dot(edge2, q);
+    if (t < t_min || t > t_max) {
+        return false;
+    }
+    
+    // Isi hit record
+    rec->t = t;
+    rec->point = ray_at(*ray, rec->t);
+    
+    // Normal dari pre-computed triangle normal
+    Vec3 outward_normal = triangle->normal;
+    rec->front_face = vec3_dot(ray->direction, outward_normal) < 0.0f;
+    rec->normal = rec->front_face ? outward_normal : vec3_scale(outward_normal, -1.0f);
+    
+    return true;
 }
 
 // Generic primitive hit test
